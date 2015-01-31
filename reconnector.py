@@ -1,6 +1,7 @@
-from sparts.tasks.periodic import PeriodicTask
 from sparts.tasks.dbus import DBusTask
+from sparts.tasks.periodic import PeriodicTask
 from sparts.vservice import VService
+from sparts.vtask import TryLater
 from sparts.sparts import option
 
 import dbus
@@ -146,8 +147,12 @@ class Reconnector(PeriodicTask, DBusTask, NMDBusHelper):
 
         for device in self.iter_wireless_devices():
             # If the active access point is already correct, we're done.
-            active_ap = self.get_device_active_ap(device)
-            active_ap_ssid = self.get_ap_ssid(active_ap)
+            try:
+                active_ap = self.get_device_active_ap(device)
+                active_ap_ssid = self.get_ap_ssid(active_ap)
+            except dbus.DBusException:
+                self.logger.exception("Error getting active AP")
+                raise TryLater("Error getting active AP", after=2.5)
             self.logger.debug('Active AP SSID is %s', active_ap_ssid)
             if active_ap_ssid == self.ssid:
                 break
