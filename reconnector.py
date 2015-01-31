@@ -7,12 +7,23 @@ import dbus
 import time
 
 BUSNAME_NM = 'org.freedesktop.NetworkManager'
+
 IFACE_SETTINGS = 'org.freedesktop.NetworkManager.Settings'
 IFACE_CONNECTION = 'org.freedesktop.NetworkManager.Settings.Connection'
 IFACE_NM = 'org.freedesktop.NetworkManager'
 IFACE_AP = 'org.freedesktop.NetworkManager.AccessPoint'
 IFACE_DEVICE = 'org.freedesktop.NetworkManager.Device'
 IFACE_DEVICE_WIRELESS = 'org.freedesktop.NetworkManager.Device.Wireless'
+
+PATH_NM = '/org/freedesktop/NetworkManager'
+PATH_SETTINGS = '/org/freedesktop/NetworkManager/Settings'
+
+KEY_SETTINGS_WIFI = '802-11-wireless'
+KEY_SETTINGS_SSID = 'ssid'
+PROP_ACTIVE_AP = 'ActiveAccessPoint'
+PROP_SSID = 'Ssid'
+
+SIGNAL_PROPS_CHANGED = 'PropertiesChanged'
 
 
 def arr_to_str(arr):
@@ -25,10 +36,10 @@ class NMDBusHelper(object):
         return self.sbus.get_object(BUSNAME_NM, path)
 
     def get_networkmanager(self):
-        return self.get_object('/org/freedesktop/NetworkManager')
+        return self.get_object(PATH_NM)
 
     def get_settings(self):
-        return self.get_object('/org/freedesktop/NetworkManager/Settings')
+        return self.get_object(PATH_SETTINGS)
 
     def iter_wireless_devices(self):
         nm = self.get_networkmanager()
@@ -46,13 +57,14 @@ class NMDBusHelper(object):
         for conn_path in settings.ListConnections():
             conn = self.get_object(conn_path)
             conn_settings = conn.GetSettings()
-            if '802-11-wireless' in conn_settings:
+            if KEY_SETTINGS_WIFI in conn_settings:
                 yield conn
 
     def get_wireless_conn_by_ssid(self, ssid):
         for conn in self.iter_wireless_conns():
             settings = conn.GetSettings()
-            conn_ssid = arr_to_str(settings['802-11-wireless']['ssid'])
+            conn_ssid = arr_to_str(
+                settings[KEY_SETTINGS_WIFI][KEY_SETTINGS_SSID])
             if conn_ssid == ssid:
                 return conn
         raise IndexError("No conn for ssid %s" % (ssid))
@@ -69,11 +81,11 @@ class NMDBusHelper(object):
         raise IndexError("No AP for ssid %s" % (ssid))
 
     def get_device_active_ap(self, device):
-        ap_path = device.Get(IFACE_DEVICE_WIRELESS, 'ActiveAccessPoint')
+        ap_path = device.Get(IFACE_DEVICE_WIRELESS, PROP_ACTIVE_AP)
         return self.get_object(ap_path)
 
     def get_ap_ssid(self, ap):
-        return arr_to_str(ap.Get(IFACE_AP, 'Ssid'))
+        return arr_to_str(ap.Get(IFACE_AP, PROP_SSID))
 
 
 class NetworkMonitor(DBusTask, NMDBusHelper):
@@ -87,18 +99,18 @@ class NetworkMonitor(DBusTask, NMDBusHelper):
         self.connect_log_signal(nm, 'CheckPermissions')
         self.connect_log_signal(nm, 'DeviceAdded')
         self.connect_log_signal(nm, 'DeviceRemoved')
-        self.connect_log_signal(nm, 'PropertiesChanged')
         self.connect_log_signal(nm, 'StateChanged')
+        self.connect_log_signal(nm, SIGNAL_PROPS_CHANGED)
 
         settings = self.get_settings()
         self.connect_log_signal(settings, 'NewConnection')
-        self.connect_log_signal(settings, 'PropertiesChanged')
+        self.connect_log_signal(settings, SIGNAL_PROPS_CHANGED)
 
         for device in self.iter_wireless_devices():
             self.connect_log_signal(device, 'AccessPointAdded')
             self.connect_log_signal(device, 'AccessPointRemoved')
-            self.connect_log_signal(device, 'PropertiesChanged')
             self.connect_log_signal(device, 'ScanDone')
+            self.connect_log_signal(device, SIGNAL_PROPS_CHANGED)
 
     def connect_log_signal(self, obj, name):
         obj.connect_to_signal(
