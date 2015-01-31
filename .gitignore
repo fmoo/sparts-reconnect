@@ -1,0 +1,6 @@
+*.pyc
+.*.sw?
+*.egg
+build/
+tags
+dist/
